@@ -1,0 +1,35 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+allprojects {
+	repositories {
+		jcenter()
+		mavenLocal()
+		google()
+	}
+	afterEvaluate {
+		tasks.withType(Test) {
+			// Allow tests to be re-run if any optional tests are enabled
+			outputs.upToDateWhen { System.getenv("OPTIONAL_TESTS") == null }
+			// Use entropy-gathering device specified on command line, if any
+			systemProperty 'java.security.egd', System.getProperty('java.security.egd')
+		}
+	}
+}
+
+buildscript {
+	repositories {
+		jcenter()
+		mavenLocal()
+		google()
+		maven {
+			url 'https://plugins.gradle.org/m2/'
+		}
+	}
+
+	dependencies {
+		classpath 'com.android.tools.build:gradle:3.2.0'
+		classpath 'net.ltgt.gradle:gradle-apt-plugin:0.18'
+		classpath 'ru.vyarus:gradle-animalsniffer-plugin:1.4.6'
+		classpath files('libs/gradle-witness.jar')
+	}
+}

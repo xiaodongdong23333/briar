@@ -1,0 +1,188 @@
+apply plugin: 'com.android.application'
+apply plugin: 'witness'
+apply from: 'witness.gradle'
+
+def getStdout = { command, defaultValue ->
+	def stdout = new ByteArrayOutputStream()
+	try {
+		exec {
+			commandLine = command
+			standardOutput = stdout
+		}
+		return stdout.toString().trim()
+	} catch (Exception ignored) {
+		return defaultValue
+	}
+}
+
+android {
+	compileSdkVersion 28
+	buildToolsVersion '28.0.3'
+
+	defaultConfig {
+		minSdkVersion 15
+		targetSdkVersion 26
+		versionCode 10103
+		versionName "1.1.3"
+		applicationId "org.briarproject.briar.android"
+		buildConfigField "String", "GitHash",
+				"\"${getStdout(['git', 'rev-parse', '--short=7', 'HEAD'], 'No commit hash')}\""
+		def now = (long) (System.currentTimeMillis() / 1000)
+		buildConfigField "Long", "BuildTimestamp",
+				"${getStdout(['git', 'log', '-n', '1', '--format=%ct'], now)}000L"
+		testInstrumentationRunner 'org.briarproject.briar.android.BriarTestRunner'
+	}
+
+	buildTypes {
+		debug {
+			applicationIdSuffix ".debug"
+			shrinkResources false
+			minifyEnabled true
+			crunchPngs false
+			proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+			testProguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt', 'proguard-test.txt'
+		}
+		release {
+			shrinkResources false
+			minifyEnabled true
+			crunchPngs false
+			proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+		}
+	}
+
+	flavorDimensions "version"
+	productFlavors {
+		screenshot {
+			dimension "version"
+			minSdkVersion 18
+			applicationIdSuffix ".screenshot" // = org.briarproject.briar.android.screenshot.debug
+		}
+		official {
+			dimension "version"
+		}
+	}
+	variantFilter { variant ->
+		if (variant.flavors*.name.contains("screenshot") && variant.buildType.name == "release") {
+			setIgnore(true)
+		}
+	}
+
+	compileOptions {
+		sourceCompatibility JavaVersion.VERSION_1_8
+		targetCompatibility JavaVersion.VERSION_1_8
+	}
+
+	testOptions {
+		unitTests {
+			includeAndroidResources = true
+		}
+	}
+
+	lintOptions {
+		warning 'MissingTranslation'
+		warning 'ImpliedQuantity'
+		warning 'ExtraTranslation'
+		abortOnError false
+	}
+}
+
+dependencies {
+	implementation project(path: ':briar-core', configuration: 'default')
+	implementation project(path: ':bramble-core', configuration: 'default')
+	implementation project(':bramble-android')
+
+	def supportVersion = '28.0.0'
+	implementation "com.android.support:support-v4:$supportVersion"
+	implementation("com.android.support:appcompat-v7:$supportVersion") {
+		exclude module: 'support-v4'
+	}
+	implementation("com.android.support:preference-v14:$supportVersion") {
+		exclude module: 'support-v4'
+	}
+	implementation("com.android.support:design:$supportVersion") {
+		exclude module: 'support-v4'
+		exclude module: 'recyclerview-v7'
+	}
+	implementation "com.android.support:cardview-v7:$supportVersion"
+	implementation "com.android.support:support-annotations:$supportVersion"
+	implementation 'com.android.support.constraint:constraint-layout:1.1.3'
+
+	implementation('ch.acra:acra:4.11') {
+		exclude module: 'support-v4'
+		exclude module: 'support-annotations'
+	}
+	implementation 'info.guardianproject.panic:panic:0.5'
+	implementation 'info.guardianproject.trustedintents:trustedintents:0.2'
+	implementation 'de.hdodenhof:circleimageview:2.2.0'
+	implementation 'com.google.zxing:core:3.3.3'
+	implementation 'uk.co.samuelwall:material-tap-target-prompt:2.12.4'
+	implementation 'com.vanniktech:emoji-google:0.5.1'
+
+	annotationProcessor 'com.google.dagger:dagger-compiler:2.0.2'
+
+	compileOnly 'javax.annotation:jsr250-api:1.0'
+
+	testImplementation project(path: ':bramble-api', configuration: 'testOutput')
+	testImplementation project(path: ':bramble-core', configuration: 'testOutput')
+	testImplementation 'org.robolectric:robolectric:3.8'
+	testImplementation 'org.robolectric:shadows-support-v4:3.3.2'
+	testImplementation 'org.mockito:mockito-core:2.13.0'
+	testImplementation 'junit:junit:4.12'
+	testImplementation "org.jmock:jmock:2.8.2"
+	testImplementation "org.jmock:jmock-junit4:2.8.2"
+	testImplementation "org.jmock:jmock-legacy:2.8.2"
+	testImplementation "org.hamcrest:hamcrest-library:1.3"
+	testImplementation "org.hamcrest:hamcrest-core:1.3"
+
+	def espressoVersion = '3.0.2'
+	androidTestImplementation "com.android.support.test.espresso:espresso-core:$espressoVersion"
+	androidTestImplementation "com.android.support.test.espresso:espresso-contrib:$espressoVersion"
+	androidTestImplementation "com.android.support.test.espresso:espresso-intents:$espressoVersion"
+	androidTestAnnotationProcessor "com.google.dagger:dagger-compiler:2.0.2"
+	androidTestCompileOnly 'javax.annotation:jsr250-api:1.0'
+	androidTestImplementation 'junit:junit:4.12'
+	androidTestScreenshotImplementation "tools.fastlane:screengrab:1.2.0"
+	androidTestScreenshotImplementation "com.android.support.test.uiautomator:uiautomator-v18:2.1.3"
+}
+
+task verifyTranslations {
+	doLast {
+		def file = project.file("src/main/res/values/arrays.xml")
+		def arrays = new XmlParser().parse(file)
+		def lc = arrays.children().find { it.@name == "pref_language_values" }
+		def translations = []
+		lc.children().each { value -> translations.add(value.text()) }
+
+		def folders = ["default", "en-US"]
+		def exceptions = ["values-night", "values-v21", "values-ldrtl"]
+		project.file("src/main/res").eachDir { dir ->
+			if (dir.name.startsWith("values-") && !exceptions.contains(dir.name)) {
+				folders.add(dir.name.substring(7).replace("-r", "-"))
+			}
+		}
+		folders.each { n ->
+			if (!translations.remove(n) && n != 'iw') {
+				throw new GradleException("Translation " + n + " is missing in $file")
+			}
+		}
+		if (translations.size() != 0)
+			throw new GradleException("Translations\n" + translations.join("\n")
+					+ "\nhave no matching value folder")
+
+		// Some devices use iw instead of he for hebrew
+		def hebrew_legacy = project.file("src/main/res/values-iw")
+		def hebrew = project.file("src/main/res/values-he")
+		// Copy values-he to values-iw
+		if (hebrew.exists()) {
+			hebrew_legacy.mkdir()
+			copy {
+				from hebrew.getAbsolutePath()
+				into hebrew_legacy.getAbsolutePath()
+			}
+		}
+	}
+}
+
+project.afterEvaluate {
+	preBuild.dependsOn.add(verifyTranslations)
+}
